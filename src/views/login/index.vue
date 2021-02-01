@@ -1,17 +1,30 @@
 <template>
   <div class="login-container">
-    <van-nav-bar title="登录" class="page-nav-bar" />
+    <!-- 导航栏 -->
+    <van-nav-bar class="page-nav-bar" title="登录">
+      <van-icon slot="left" name="cross" @click="$router.back()" />
+    </van-nav-bar>
+    <!-- /导航栏 -->
+
     <!-- 登录表单 -->
-    <van-form @submit="onSubmit" ref="userInfoRef">
+    <!--
+      表单验证：
+        1、给 van-field 组件配置 rules 验证规则
+          参考文档：https://youzan.github.io/vant/#/zh-CN/form#rule-shu-ju-jie-gou
+        2、当表单提交的时候会自动触发表单验证
+           如果验证通过，会触发 submit 事件
+           如果验证失败，不会触发 submit
+     -->
+    <van-form ref="loginForm" @submit="onSubmit">
       <van-field
         v-model="user.mobile"
         name="mobile"
-        placeholder="请输入手机号码"
+        placeholder="请输入手机号"
         :rules="userFormRules.mobile"
         type="number"
         maxlength="11"
       >
-        <i slot="left-icon" class="iconfont iconshouji"></i>
+        <i slot="left-icon" class="toutiao toutiao-shouji"></i>
       </van-field>
       <van-field
         v-model="user.code"
@@ -21,39 +34,42 @@
         type="number"
         maxlength="6"
       >
-        <i slot="left-icon" class="iconfont iconyanzhengma"></i>
+        <i slot="left-icon" class="toutiao toutiao-yanzhengma"></i>
         <template #button>
-          <van-button
-            class="send-sms-btn"
-            size="small"
-            round
-            @click="onSendSms"
-            native-type="button"
-            v-show="showSmsBtn"
-            >获取验证码</van-button
-          >
-          <!-- time倒计时时间 -->
+          <!--
+            time: 倒计时时间
+           -->
           <van-count-down
-            :time="time"
+            v-if="isCountDownShow"
+            :time="1000 * 60"
             format="ss s"
-            v-show="!showSmsBtn"
-            ref="countDownRef"
-            @finish="countDownFinish"
-            :auto-start="false"
+            @finish="isCountDownShow = false"
           />
+          <van-button
+            v-else
+            class="send-sms-btn"
+            native-type="button"
+            round
+            size="small"
+            type="default"
+            @click="onSendSms"
+            >发送验证码</van-button
+          >
         </template>
       </van-field>
       <div class="login-btn-wrap">
-        <van-button block type="info" native-type="submit" class="login-btn"
-          >登录</van-button
-        >
+        <van-button class="login-btn" block type="info" native-type="submit">
+          登录
+        </van-button>
       </div>
     </van-form>
+    <!-- /登录表单 -->
   </div>
 </template>
 
 <script>
 import { login, sendSms } from '@/api/user'
+
 export default {
   name: 'LoginIndex',
   components: {},
@@ -61,8 +77,8 @@ export default {
   data() {
     return {
       user: {
-        mobile: '',
-        code: ''
+        mobile: '13911111111', // 手机号
+        code: '246810' // 验证码
       },
       userFormRules: {
         mobile: [
@@ -86,8 +102,7 @@ export default {
           }
         ]
       },
-      time: 60000,
-      showSmsBtn: true
+      isCountDownShow: false // 是否展示倒计时
     }
   },
   computed: {},
@@ -95,69 +110,56 @@ export default {
   created() {},
   mounted() {},
   methods: {
-    onSubmit: async function() {
-      // 获取表单数据
-      //   const user = JSON.stringify(this.user)
-      const userInfo = this.user
-      // 表单验证
-      // 提交表单请求登录
-      //   console.log(user)
-      //   console.log(JSON.stringify(user))
-      //   console.log(user === JSON.stringify(user))
-      // 开始转圈圈
+    async onSubmit() {
+      // 1. 展示登陆中 loading
       this.$toast.loading({
-        duration: 0, // 持续时间，默认时间2s，0表示持续展示不停止，直到成功或失败
-        forbidClick: true, // 是否禁止背景点击（forbid：禁止）
-        message: '登录中...' // 提示消息
+        message: '登录中...',
+        forbidClick: true, // 禁用背景点击
+        duration: 0 // 持续时间，默认 2000，0 表示持续展示不关闭
       })
+
+      // 2. 请求登录
       try {
-        const res = await login(userInfo)
-        // const res = await login(JSON.stringify(userInfo))
-        console.log('登陆成功', res)
-        this.$store.commit('setUser', res.data.data)
+        const { data } = await login(this.user)
+        this.$store.commit('setUser', data.data)
         this.$toast.success('登录成功')
+
+        // 登录成功，跳转回原来页面
+        // back 的方式不严谨，后面讲功能优化的时候再说
+        this.$router.back()
       } catch (err) {
         if (err.response.status === 400) {
-          console.log('登录失败', err)
-          this.$toast.fail('登录失败，手机号或验证码错误')
+          this.$toast.fail('手机号或验证码错误')
         } else {
-          console.log('登录失败，请稍候重试', err)
-          this.$toast.fail('登录失败，手机号或验证码错误')
+          this.$toast.fail('登录失败，请稍后重试')
         }
       }
-      //   login(user)
-      //     .then(res => console.log(res))
-      //     .catch(e => e)
-      // 根据请求响应结果进行后续处理
     },
-    onSendSms: async function() {
-      // 校验手机号
+
+    async onSendSms() {
+      // 1. 校验手机号
       try {
-        await this.$refs.userInfoRef.validate('mobile')
-        console.log('验证通过')
-      } catch (error) {
-        // return console.log('验证失败', error)
-        return this.$toast.fail(error.message)
+        await this.$refs.loginForm.validate('mobile')
+      } catch (err) {
+        return console.log('验证失败', err)
       }
-      // 倒计时
-      this.showSmsBtn = false
-      // this.time = 60000
-      this.$refs.countDownRef.reset()
-      this.$refs.countDownRef.start()
+
+      // 2. 验证通过，显示倒计时
+      this.isCountDownShow = true
+
+      // 3. 请求发送验证码
       try {
         await sendSms(this.user.mobile)
         this.$toast('发送成功')
       } catch (err) {
-        this.showSmsBtn = true
+        // 发送失败，关闭倒计时
+        this.isCountDownShow = false
         if (err.response.status === 429) {
           this.$toast('发送太频繁了，请稍后重试')
         } else {
           this.$toast('发送失败，请稍后重试')
         }
       }
-    },
-    countDownFinish: function() {
-      this.showSmsBtn = true
     }
   }
 }
@@ -165,17 +167,19 @@ export default {
 
 <style scoped lang="less">
 .login-container {
-  .iconfont {
+  .toutiao {
     font-size: 37px;
   }
+
   .send-sms-btn {
-    background-color: #ededed;
-    width: 158px;
+    width: 152px;
     height: 46px;
     line-height: 46px;
-    font-size: 22px !important;
+    background-color: #ededed;
+    font-size: 22px;
     color: #666;
   }
+
   .login-btn-wrap {
     padding: 53px 33px;
     .login-btn {
